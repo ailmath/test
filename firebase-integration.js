@@ -1,116 +1,443 @@
 // ===========================================
-// تحديث وظائف التخزين الحالية لتعمل مع Firebase
+// تحسين تكامل Firebase مع الكود الموجود
 // ===========================================
 
-// هذا الملف يحدث الكود الموجود ليستخدم Firebase بدلاً من localStorage فقط
+// انتظار تحميل Firebase config
+let integrationReady = false;
 
-// تحديث جميع localStorage.setItem للعمل مع Firebase
-function updateStorageFunctions() {
-  // حفظ المرجع الأصلي
-  const originalSetItem = localStorage.setItem.bind(localStorage);
+// ===========================================
+// وظائف تحسين التكامل مع الوظائف الموجودة
+// ===========================================
 
-  // تحديث localStorage.setItem
-  localStorage.setItem = function (key, value) {
-    // حفظ في localStorage (للتوافق)
-    originalSetItem(key, value);
+// تحسين وظائف الحفظ للعمل مع Firebase
+function enhanceExistingFunctions() {
+  // قائمة الوظائف التي نريد تحسينها
+  const functionsToEnhance = [
+    'uploadWorksheet',
+    'uploadWeeklyPlan', 
+    'uploadPhotoAchievement',
+    'saveReminder',
+    'saveStudent',
+    'finishExam',
+    'deleteExam',
+    'deleteStudent',
+    'deleteWorksheet',
+    'deleteWeeklyPlan',
+    'deletePhotoAchievement',
+    'deleteAchievementFile',
+    'deleteReminder'
+  ];
 
-    // مزامنة مع Firebase
-    if (window.isFirebaseConnected && window.isFirebaseConnected()) {
-      try {
-        const parsedValue = JSON.parse(value);
-        window.database
-          .ref(key)
-          .set(parsedValue)
-          .then(() => {
-            console.log(`🔥 تم حفظ ${key} في Firebase`);
-          })
-          .catch((error) => {
-            console.error(`❌ خطأ في حفظ ${key} في Firebase:`, error);
-          });
-      } catch (e) {
-        // إذا لم يكن JSON صالح، احفظ كنص
-        window.database.ref(key).set(value);
+  functionsToEnhance.forEach(funcName => {
+    if (window[funcName] && typeof window[funcName] === 'function') {
+      const originalFunction = window[funcName];
+      
+      window[funcName] = function() {
+        // تنفيذ الوظيفة الأصلية
+        const result = originalFunction.apply(this, arguments);
+        
+        // مزامنة فورية مع Firebase
+        if (window.isFirebaseConnected && window.isFirebaseConnected()) {
+          setTimeout(() => {
+            window.syncAllDataToFirebase();
+            console.log(`🔥 تم مزامنة البيانات بعد تنفيذ ${funcName}`);
+          }, 500);
+        }
+        
+        return result;
+      };
+      
+      console.log(`✅ تم تحسين وظيفة ${funcName} للعمل مع Firebase`);
+    }
+  });
+}
+
+// مراقبة تغييرات البيانات المهمة
+function watchDataChanges() {
+  const dataKeys = [
+    'exams', 'students', 'worksheets', 'weeklyPlans', 
+    'photoAchievements', 'achievementFiles', 'reminders',
+    'studentErrors', 'examHistory', 'studentTracking', 'studentUploadCounts'
+  ];
+
+  // حفظ القيم الحالية
+  const currentValues = {};
+  dataKeys.forEach(key => {
+    currentValues[key] = JSON.stringify(window[key] || null);
+  });
+
+  // مراقبة التغييرات كل 3 ثواني
+  setInterval(() => {
+    if (!window.isFirebaseConnected || !window.isFirebaseConnected()) return;
+
+    let hasChanges = false;
+    dataKeys.forEach(key => {
+      const newValue = JSON.stringify(window[key] || null);
+      if (currentValues[key] !== newValue) {
+        currentValues[key] = newValue;
+        hasChanges = true;
+      }
+    });
+
+    // إذا كان هناك تغييرات، قم بالمزامنة
+    if (hasChanges) {
+      window.syncAllDataToFirebase();
+      console.log('🔄 تم اكتشاف تغييرات وتم بدء المزامنة التلقائية');
+    }
+  }, 3000);
+}
+
+// تحسين عملية تحميل البيانات
+function enhanceDataLoading() {
+  // تحسين وظائف التحميل
+  const loadFunctions = [
+    'loadExams', 'loadStudents', 'loadWorksheets', 'loadWeeklyPlans',
+    'loadPhotoAchievements', 'loadAchievementFiles', 'loadReminders'
+  ];
+
+  loadFunctions.forEach(funcName => {
+    if (window[funcName] && typeof window[funcName] === 'function') {
+      const originalFunction = window[funcName];
+      
+      window[funcName] = function() {
+        // تنفيذ الوظيفة الأصلية
+        const result = originalFunction.apply(this, arguments);
+        
+        // تحديث الإحصائيات
+        if (typeof updateStats === 'function') {
+          updateStats();
+        }
+        
+        return result;
+      };
+    }
+  });
+}
+
+// إضافة أزرار Firebase للمعلم
+function addFirebaseControls() {
+  // انتظار ظهور أزرار المعلم
+  const checkForAdminControls = setInterval(() => {
+    const adminControls = document.querySelectorAll('.admin-controls');
+    
+    if (adminControls.length > 0 && window.isAdmin) {
+      adminControls.forEach(controlPanel => {
+        // تحقق من عدم وجود زر Firebase مسبقاً
+        if (!controlPanel.querySelector('.firebase-control-btn')) {
+          const firebaseBtn = document.createElement('button');
+          firebaseBtn.className = 'firebase-control-btn bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white px-4 py-2 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 flex items-center mr-3';
+          firebaseBtn.innerHTML = `
+            <span class="ml-2">🔥</span>
+            قاعدة البيانات
+          `;
+          firebaseBtn.onclick = () => {
+            if (window.showFirebasePanel) {
+              window.showFirebasePanel();
+            }
+          };
+          
+          // إضافة الزر في بداية لوحة التحكم
+          controlPanel.insertBefore(firebaseBtn, controlPanel.firstChild);
+        }
+      });
+      
+      clearInterval(checkForAdminControls);
+      console.log('🔥 تم إضافة أزرار Firebase لجميع لوحات التحكم');
+    }
+  }, 1000);
+
+  // توقف عن المحاولة بعد 15 ثانية
+  setTimeout(() => clearInterval(checkForAdminControls), 15000);
+}
+
+// إضافة مؤشر حالة Firebase محسن
+function addEnhancedStatusIndicator() {
+  // إضافة أزرار سريعة للمعلم
+  if (window.isAdmin) {
+    const quickControls = document.createElement('div');
+    quickControls.id = 'firebaseQuickControls';
+    quickControls.className = 'fixed bottom-4 left-4 space-y-2 z-40';
+    quickControls.innerHTML = `
+      <div class="bg-white/90 backdrop-blur-sm rounded-2xl p-3 shadow-lg">
+        <div class="flex items-center space-x-3 space-x-reverse">
+          <div id="quickStatusIndicator" class="w-3 h-3 bg-gray-500 rounded-full animate-pulse"></div>
+          <span id="quickStatusText" class="text-sm font-medium text-gray-700">جاري التحميل...</span>
+        </div>
+        
+        <div class="flex space-x-2 space-x-reverse mt-3">
+          <button onclick="window.syncAllDataToFirebase()" 
+                  class="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-all duration-300 transform hover:scale-105"
+                  title="مزامنة فورية">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+          
+          <button onclick="window.createBackup()" 
+                  class="bg-green-500 hover:bg-green-600 text-white p-2 rounded-lg transition-all duration-300 transform hover:scale-105"
+                  title="نسخة احتياطية">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+            </svg>
+          </button>
+          
+          <button onclick="window.showFirebasePanel()" 
+                  class="bg-purple-500 hover:bg-purple-600 text-white p-2 rounded-lg transition-all duration-300 transform hover:scale-105"
+                  title="لوحة التحكم">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(quickControls);
+  }
+}
+
+// تحديث مؤشرات الحالة
+function updateStatusIndicators() {
+  const indicators = [
+    { id: 'statusIndicator', textId: 'statusText' },
+    { id: 'quickStatusIndicator', textId: 'quickStatusText' }
+  ];
+
+  indicators.forEach(({ id, textId }) => {
+    const indicator = document.getElementById(id);
+    const text = document.getElementById(textId);
+    
+    if (indicator && text) {
+      if (window.isFirebaseConnected && window.isFirebaseConnected()) {
+        indicator.className = 'w-3 h-3 bg-green-500 rounded-full animate-pulse';
+        text.textContent = 'متصل';
+      } else {
+        indicator.className = 'w-3 h-3 bg-red-500 rounded-full';
+        text.textContent = 'غير متصل';
       }
     }
-  };
+  });
 }
 
-// تحديث localStorage.getItem لقراءة من Firebase أولاً
-function updateGetStorageFunctions() {
-  const originalGetItem = localStorage.getItem.bind(localStorage);
+// مراقبة حالة الاتصال وتحديث المؤشرات
+function monitorConnectionStatus() {
+  setInterval(() => {
+    updateStatusIndicators();
+  }, 2000);
+}
 
-  localStorage.getItem = function (key) {
-    // للآن نستخدم localStorage، لكن يمكن تطوير هذا لقراءة من Firebase
-    return originalGetItem(key);
+// تحسين عملية المزامنة التلقائية
+function enhanceAutoSync() {
+  let lastSyncTime = 0;
+  const SYNC_INTERVAL = 30000; // 30 ثانية
+
+  setInterval(() => {
+    if (window.isFirebaseConnected && window.isFirebaseConnected()) {
+      const now = Date.now();
+      if (now - lastSyncTime >= SYNC_INTERVAL) {
+        window.syncAllDataToFirebase();
+        lastSyncTime = now;
+        console.log('🔄 مزامنة تلقائية مجدولة');
+      }
+    }
+  }, SYNC_INTERVAL);
+}
+
+// إضافة إشعارات محسنة للمزامنة
+function addSyncNotifications() {
+  // مراقبة عمليات المزامنة
+  const originalSyncFunction = window.syncAllDataToFirebase;
+  
+  if (originalSyncFunction) {
+    window.syncAllDataToFirebase = async function() {
+      try {
+        // إظهار إشعار بدء المزامنة
+        showSyncNotification('جاري المزامنة...', 'info');
+        
+        // تنفيذ المزامنة
+        await originalSyncFunction.apply(this, arguments);
+        
+        // إظهار إشعار نجاح المزامنة
+        showSyncNotification('تم حفظ البيانات بنجاح', 'success');
+      } catch (error) {
+        // إظهار إشعار خطأ
+        showSyncNotification('خطأ في حفظ البيانات', 'error');
+        console.error('خطأ في المزامنة:', error);
+      }
+    };
+  }
+}
+
+// إشعارات مزامنة مبسطة
+function showSyncNotification(message, type) {
+  // إزالة الإشعارات السابقة
+  const existingNotifications = document.querySelectorAll('.sync-notification');
+  existingNotifications.forEach(notification => notification.remove());
+
+  const notification = document.createElement('div');
+  notification.className = 'sync-notification fixed top-4 right-4 z-50 p-3 rounded-lg shadow-lg transform transition-all duration-300 translate-x-full';
+  
+  const colors = {
+    success: 'bg-green-500 text-white',
+    error: 'bg-red-500 text-white',
+    info: 'bg-blue-500 text-white',
+    warning: 'bg-yellow-500 text-white'
   };
+  
+  notification.className += ` ${colors[type] || colors.info}`;
+  notification.textContent = message;
+  
+  document.body.appendChild(notification);
+  
+  // إظهار الإشعار
+  setTimeout(() => notification.classList.remove('translate-x-full'), 100);
+  
+  // إخفاء الإشعار
+  setTimeout(() => {
+    notification.classList.add('translate-x-full');
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.remove();
+      }
+    }, 300);
+  }, 2000);
 }
 
 // ===========================================
-// وظائف خاصة لتحديث الكود الموجود
+// تهيئة التكامل المحسن
 // ===========================================
 
-// تحديث وظيفة uploadWorksheet لتستخدم Firebase
-function updateUploadWorksheet() {
-  if (window.uploadWorksheet) {
-    const originalUploadWorksheet = window.uploadWorksheet;
-
-    window.uploadWorksheet = function () {
-      // استخدام الوظيفة الأصلية
-      const result = originalUploadWorksheet.apply(this, arguments);
-
-      // مزامنة فورية مع Firebase
-      if (window.isFirebaseConnected && window.isFirebaseConnected()) {
-        setTimeout(() => {
-          window.database.ref("worksheets").set(window.worksheets);
-          console.log("🔥 تم حفظ أوراق العمل في Firebase");
-        }, 500);
-      }
-
-      return result;
-    };
-  }
+function initializeEnhancedIntegration() {
+  console.log('🔥 بدء تهيئة التكامل المحسن مع Firebase...');
+  
+  // انتظار تحميل Firebase
+  const waitForFirebase = setInterval(() => {
+    if (window.isFirebaseConnected) {
+      clearInterval(waitForFirebase);
+      
+      // تحسين الوظائف الموجودة
+      enhanceExistingFunctions();
+      
+      // تحسين عملية تحميل البيانات
+      enhanceDataLoading();
+      
+      // بدء مراقبة التغييرات
+      watchDataChanges();
+      
+      // إضافة أزرار Firebase
+      addFirebaseControls();
+      
+      // إضافة مؤشر الحالة المحسن
+      addEnhancedStatusIndicator();
+      
+      // مراقبة حالة الاتصال
+      monitorConnectionStatus();
+      
+      // تحسين المزامنة التلقائية
+      enhanceAutoSync();
+      
+      // إضافة إشعارات المزامنة
+      addSyncNotifications();
+      
+      integrationReady = true;
+      console.log('✅ تم تفعيل التكامل المحسن مع Firebase بنجاح');
+    }
+  }, 1000);
+  
+  // توقف عن المحاولة بعد 30 ثانية
+  setTimeout(() => {
+    clearInterval(waitForFirebase);
+    if (!integrationReady) {
+      console.warn('⚠️ انتهت مهلة انتظار Firebase');
+    }
+  }, 30000);
 }
 
-// تحديث وظيفة uploadWeeklyPlan لتستخدم Firebase
-function updateUploadWeeklyPlan() {
-  if (window.uploadWeeklyPlan) {
-    const originalUploadWeeklyPlan = window.uploadWeeklyPlan;
+// بدء التهيئة عند تحميل الصفحة
+document.addEventListener('DOMContentLoaded', function() {
+  // انتظار تحميل الكود الأساسي
+  setTimeout(initializeEnhancedIntegration, 3000);
+});
 
-    window.uploadWeeklyPlan = function () {
-      const result = originalUploadWeeklyPlan.apply(this, arguments);
+// ===========================================
+// وظائف مساعدة إضافية
+// ===========================================
 
-      if (window.isFirebaseConnected && window.isFirebaseConnected()) {
-        setTimeout(() => {
-          window.database.ref("weeklyPlans").set(window.weeklyPlans);
-          console.log("🔥 تم حفظ الخطط الأسبوعية في Firebase");
-        }, 500);
-      }
-
-      return result;
+// فحص سلامة البيانات
+function checkDataIntegrity() {
+  const dataKeys = ['exams', 'students', 'worksheets', 'weeklyPlans', 'photoAchievements', 'achievementFiles', 'reminders'];
+  const report = {};
+  
+  dataKeys.forEach(key => {
+    const data = window[key];
+    report[key] = {
+      exists: !!data,
+      type: Array.isArray(data) ? 'array' : typeof data,
+      count: Array.isArray(data) ? data.length : (data && typeof data === 'object' ? Object.keys(data).length : 0)
     };
-  }
+  });
+  
+  console.table(report);
+  return report;
 }
 
-// تحديث وظيفة uploadPhotoAchievement لتستخدم Firebase
-function updateUploadPhotoAchievement() {
-  if (window.uploadPhotoAchievement) {
-    const originalUploadPhotoAchievement = window.uploadPhotoAchievement;
+// تصدير سريع للبيانات
+function quickExportData() {
+  const data = {
+    exams: window.exams || [],
+    students: window.students || {},
+    worksheets: window.worksheets || [],
+    weeklyPlans: window.weeklyPlans || [],
+    photoAchievements: window.photoAchievements || [],
+    achievementFiles: window.achievementFiles || [],
+    reminders: window.reminders || [],
+    exportDate: new Date().toISOString()
+  };
+  
+  const dataStr = JSON.stringify(data, null, 2);
+  const dataBlob = new Blob([dataStr], { type: 'application/json' });
+  
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(dataBlob);
+  link.download = `backup-${new Date().toISOString().split('T')[0]}.json`;
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  showSyncNotification('تم تصدير البيانات بنجاح', 'success');
+}
 
-    window.uploadPhotoAchievement = function () {
-      const result = originalUploadPhotoAchievement.apply(this, arguments);
+// إضافة الوظائف للنافذة العامة
+window.checkDataIntegrity = checkDataIntegrity;
+window.quickExportData = quickExportData;
 
-      if (window.isFirebaseConnected && window.isFirebaseConnected()) {
-        setTimeout(() => {
-          window.database
-            .ref("photoAchievements")
-            .set(window.photoAchievements);
-          console.log("🔥 تم حفظ الإنجازات المصورة في Firebase");
-        }, 500);
-      }
+// ===========================================
+// معالجة الأخطاء المحسنة
+// ===========================================
 
-      return result;
-    };
+// معالج الأخطاء العام
+window.addEventListener('error', function(event) {
+  console.error('خطأ في التطبيق:', event.error);
+  
+  // إذا كان الخطأ متعلق بـ Firebase
+  if (event.error && event.error.message && event.error.message.includes('Firebase')) {
+    showSyncNotification('خطأ في الاتصال بقاعدة البيانات', 'error');
   }
+});
+
+// معالج الأخطاء غير المعالجة
+window.addEventListener('unhandledrejection', function(event) {
+  console.error('خطأ غير معالج:', event.reason);
+  
+  // إذا كان الخطأ متعلق بـ Firebase
+  if (event.reason && event.reason.message && event.reason.message.includes('Firebase')) {
+    showSyncNotification('خطأ في عملية قاعدة البيانات', 'error');
+  }
+});
+
+console.log('🔥 Firebase Enhanced Integration Loaded - تم تحميل التكامل المحسن مع Firebase');
 }
 
 // تحديث وظيفة saveReminder لتستخدم Firebase
